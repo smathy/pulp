@@ -7,7 +7,11 @@ Gem::Specification.new do |s|
   s.author = "Jason King"
   s.summary = %q{pelp - Passenger Helper - for simple setup of Ruby Apps using Passenger}
 
-	s.files = %w{README.markdown lib/**/*.rb bin/pelp}
+	s.files = %w{
+    README.markdown
+    lib/passenger/config.rb
+    bin/pelp
+  }
 
 	#s.test_files       = Dir.glob('tests/*.rb')
 
@@ -27,12 +31,12 @@ Gem::Specification.new do |s|
     s.specification_version = 2
 
     if Gem::Version.new(Gem::RubyGemsVersion) >= Gem::Version.new('1.2.0') then
-      #s.add_runtime_dependency(%q<mime-types>, [">= 1.15"])
+      s.add_runtime_dependency(%q<JasonKing-grep>, [">= 0.0.2"])
     else
-      #s.add_dependency(%q<mime-types>, [">= 1.15"])
+      s.add_dependency(%q<JasonKing-grep>, [">= 0.0.2"])
     end
   else
-    #s.add_dependency(%q<mime-types>, [">= 1.15"])
+    s.add_dependency(%q<JasonKing-grep>, [">= 0.0.2"])
   end
 end
 
