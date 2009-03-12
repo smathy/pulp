@@ -4,66 +4,8 @@ $LOAD_PATH.unshift(File.expand_path(File.join( File.dirname(__FILE__), '..', 'li
 
 require 'passenger/config'
 
-begin
+c = Passenger::Config.new( :root => ARGV[0] )
+c.update_hosts
+c.update_apache
 
-  c = Passenger::Config.new( :app => ARGV[0], :domain => '.dev' )
-  puts c.conf
-  puts c.server_root
-  puts c.passenger_conf
-  puts c.user
-  puts c.group
-  c.check_perms('/Users/jgk/work/a/public')
-
-  localhost_line = '^\s*' + Regexp.quote(ip) + '\b' + '.*'
-  domain_line = localhost_line + '\b' + Regexp.quote(domain) + '\b'
-  host_line = localhost_line + '\b' + Regexp.quote(host) + '\b'
-
-  had_domain_line = false
-  File.open(hosts, 'r+') do |f|
-    f.flock File::LOCK_EX
-    buffer = []
-    f.each do |l|
-      if l.match(domain_line)		# add it to the same line that the other #{domain} entries are on
-        had_domain_line = true
-        unless l.match(host_line)	# already exists - don't re-add
-          l = "#{l.chomp} #{host}\n"
-        end
-      end
-      buffer << l
-    end
-
-    unless had_domain_line			# if there was no #{domain} line then just add it to the end
-      buffer << "#{ip} #{host}\n"
-    end
-    f.truncate 0
-    f << buffer
-  end
-
-  vhost = <<-__EOI
-<VirtualHost *:80>
-  DocumentRoot #{File.join( Dir.pwd, app, 'public')}
-  ServerName #{host}
-  <Location />
-    Order allow,deny
-    Allow from all
-  </Location>
-</VirtualHost>
-
-  __EOI
-
-  File.open(rails_conf, 'r+') do |f|
-    f.flock File::LOCK_EX
-    catch(:out) do
-      f.each("\n\n") do |ir|
-        if ir == vhost
-          f.seek 0, IO::SEEK_END
-          throw :out
-        end
-      end
-      f.puts vhost
-    end
-  end
-
-  system('apachectl restart')
-end
-
+c.consolidate

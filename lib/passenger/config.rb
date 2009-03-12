@@ -6,36 +6,159 @@ require 'grep'
 module Passenger
   class Config
     attr_reader :domain
+    attr_reader :ip
+    attr_reader :hosts
 
     @@marker_string = "#----- #{File.basename($0, '.rb')} marker line -- DO NOT DELETE -----#"
 
     @@httpd_cmd = 'httpd'
+    @@apachectl = 'apachectl'
 
     @@user_re  = /^\s*User\s+(\S+)/i
     @@group_re = /^\s*Group\s+(\S+)/i
 
     def initialize(p)
-      @app = p[:app]
+      self.root = p[:root]
       @domain = (p[:domain] || '.dev').sub(/^\.*/,'.')
       @hosts = p[:hosts] || '/etc/hosts'
       @ip = p[:ip] || '127.0.0.1'
 
       @check_for_user = lambda {|l|
         if m = l.match(@@user_re)
-          puts "Got user #{m[1]}"
           @user = m[1]
         end
       }
       @check_for_group = lambda {|l|
         if m = l.match(@@user_re)
-          puts "Got group #{m[1]}"
           @group = m[1]
         end
       }
+
+      read_conf
+      check_root_perms
+
+      setup_vhost
+    end
+
+    def consolidate
+      _hosts = list_hosts
+      _vhosts = list_vhosts
+
+      _hosts.each_index do |i|
+        case _hosts[i] <=> _vhosts[i]
+        when 0
+          next
+        when 1
+          puts "Missing from #{hosts}: #{_vhosts[i]}"
+          _hosts.insert(i, _vhosts[i])
+        when -1
+          puts "Missing from #{passenger_conf}: #{_hosts[i]}"
+          _vhosts.insert(i, _hosts[i])
+        end
+      end
+    end
+
+    def update_hosts
+      _had_domain_line = false
+      File.open(hosts, 'r+') do |f|
+        f.flock File::LOCK_EX
+        _buffer = []
+        f.each do |l|
+          if l.match(domain_re)		# add it to the same line that the other #{domain} entries are on
+            _had_domain_line = true
+            unless l.match(host_re)	# already exists - don't re-add
+              l = "#{l.chomp} #{host}\n"
+            end
+          end
+          _buffer << l
+        end
+
+        unless _had_domain_line			# if there was no #{domain} line then just add it to the end
+          _buffer << "#{ip} #{host}\n"
+        end
+        f.seek 0
+        f.truncate 0
+        f << _buffer
+      end
+    end
+
+    def update_apache
+      File.open(passenger_conf, 'r+') do |f|
+        f.flock File::LOCK_EX
+        catch(:out) do
+          f.each("\n\n") do |ir|
+            if ir == @vhost_entry
+              f.seek 0, IO::SEEK_END
+              throw :out
+            end
+          end
+          f.puts @vhost_entry
+        end
+      end
+      system("#{@@apachectl} restart")
+    end
+
+    private
+    def list_hosts
+      _hosts = []
+      File.open(hosts).each do |l|
+        if l.match(domain_re)
+          _hosts += l.scan(/\S+#{Regexp.quote(domain)}(?!\S)/)
+        end
+      end
+      _hosts.sort.uniq
+    end
+
+    def list_vhosts
+      _h = []
+      File.open(passenger_conf).each do |l|
+        if m = l.match( %r{^\s*ServerName\s+(\S+#{Regexp.quote(domain)})(?!\S)})
+          _h << m[1]
+        end
+      end
+      _h.sort.uniq
+    end
+
+    def setup_vhost
+      @vhost_entry =<<-__EOI
+<VirtualHost #{vhost}>
+	DocumentRoot #{root}
+	ServerName #{host}
+	<Location />
+		Order allow,deny
+		Allow from all
+	</Location>
+</VirtualHost>
+
+      __EOI
+    end
+
+    def root=(_d)
+      @root = File.expand_path(_d || '.')
+    end
+
+    def root
+      File.join(@root, 'public')
+    end
+
+    def app
+      @app ||= File.basename(@root)
     end
 
     def host
-      @host ||= @app + @domain
+      @host ||= app + domain
+    end
+
+    def localhost_re
+      @localhost_re ||= %r{^\s*#{Regexp.quote(ip)}\s.*}
+    end
+
+    def domain_re
+      @domain_re ||= %r{#{localhost_re}\b#{Regexp.quote(domain)}(?!\S)}
+    end
+
+    def host_re
+      @host_re ||= %r{#{localhost_re}\s#{Regexp.quote(host)}(?!\S)}
     end
 
     def conf
@@ -68,8 +191,8 @@ module Passenger
       end
     end
 
-    def check_perms(_dir)
-      system("sudo -u #{user} ls #{_dir} 1>/dev/null 2>&1") or raise %Q{Your Apache user "#{user}" can't read your document root "#{_dir}"}
+    def check_root_perms
+      system("sudo -u #{user} ls #{root} 1>/dev/null 2>&1") or raise %Q{Your Apache user "#{user}" can't read your document root "#{root}"}
     end
 
     def get_group
@@ -100,6 +223,24 @@ module Passenger
     def passenger_conf
       return @passenger_conf if @passenger_conf || @passenger_conf = retrieve_passenger_conf
 
+      # the logic for where we're going to add our vhosts is a little complex
+      #
+      #  1. We use the RailsEnv file as long as it comes after the
+      #     NameVirtualHost entry
+      #  2. Otherwise we're going to create our own file, include it from the
+      #     main conf, and use that
+
+      if @conf_files[:renv][:order] > @conf_files[:vhost][:order]
+        if @conf_files[:renv][:file] != conf
+          return @passenger_conf = @conf_files[:renv][:file]
+        end
+      end
+
+      @passenger_conf = make_new_file
+    end
+
+    def read_conf
+      @conf_files = {}
       # Strings that we're looking for:
       #
       #   NameVirtualHost *:80
@@ -115,8 +256,6 @@ module Passenger
         :renv =>  %r{^\s*RailsEnv\s+(['"]?)(\S+)\1}i
       }
 
-      @conf_files = {}
-
       # change into the server root so that any relative paths in the conf files work
       Dir.chdir(server_root) do |p|
 
@@ -126,24 +265,7 @@ module Passenger
         # out
         drill_down(conf)
       end
-
-      check_conf
       ensure_conf
-
-      # the logic for where we're going to add our vhosts is a little complex
-      #
-      #  1. We use the RailsEnv file as long as it comes after the
-      #     NameVirtualHost entry
-      #  2. Otherwise we're going to create our own file, include it from the
-      #     main conf, and use that
-
-      if @conf_files[:renv][:order] > @conf_files[:vhost][:order]
-        if @conf_files[:renv][:file] != conf
-          return @passenger_conf = @conf_files[:renv][:file]
-        end
-      end
-
-      @passenger_conf = make_new_file
     end
 
     def ensure_dir(d)
@@ -177,20 +299,29 @@ module Passenger
     end
 
     def ensure_conf
+      _need_re_read = false
       unless @conf_files[:root]
         add_to_conf( "PassengerRoot #{@conf_files[:load][:match][1]}", :load, :root )
+        _need_re_read = true
       end
 
       unless @conf_files[:ruby]
         add_to_conf( "PassengerRuby #{@conf_files[:load][:match][2]}/bin/ruby", :root, :ruby )
+        _need_re_read = true
       end
 
       unless @conf_files[:renv]
-        add_to_conf( "RailsEnv #{ENV['RAILS_ENV'] || 'development'}", :ruby, :renv )
+        add_to_conf( "RailsEnv #{ENV['RAILS_ENV'] || 'development'}\n", :ruby, :renv )
+        _need_re_read = true
       end
 
       unless @conf_files[:vhost]
-        add_to_conf( "NameVirtualHost *:80", :renv, :vhost )
+        add_to_conf( "NameVirtualHost *:80\n", :renv, :vhost )
+        _need_re_read = true
+      end
+
+      if _need_re_read
+        read_conf
       end
       check_conf
     end
@@ -199,51 +330,51 @@ module Passenger
       p = @conf_files[from]
       File.open( p[:file], 'r+' ) do |f|
         f.flock File::LOCK_EX
-        buffer = []
+        _buffer = []
         f.each do |l|
-          buffer << l
+          _buffer << l
           if $. == p[:lineno]
-            buffer << str.chomp + "\n"
+            @conf_files[to] = { :file => p[:file], :lineno => $. + 1 + str.count("\n") }
+            _buffer << str + "\n"
           end
         end
         f.truncate 0
         f.seek 0
-        f << buffer
+        f << _buffer
       end
     end
 
     def check_conf
-      unless @conf_checked
+      # we can add everything except the LoadModule line
+      unless @conf_files[:load]
+        raise "LoadModule line missing, maybe you forgot to run: passenger-install-apache2-module"
+      end
 
-        # we can add everything except the LoadModule line
-        unless @conf_files[:load]
-          raise "LoadModule line missing, maybe you forgot to run: passenger-install-apache2-module"
-        end
-
-        _load_order = @conf_files[:load][:order]
-        [ :root, :ruby, :renv ].each do |s|
-          next unless @conf_files[s]
-          if _load_order > @conf_files[s][:order]
-            raise "Passenger module loaded too late: #{@conf_files[:load][:file]},#{@conf_files[:load][:lineno]} needs to happen before #{@conf_files[s][:file]},#{@conf_files[s][:lineno]}"
-          end
-        end
-
-        _load_passenger_location = @conf_files[:load][:match][1]
-        if @conf_files[:root]
-          unless _load_passenger_location == _root_passenger_location = @conf_files[:root][:match][2]
-            raise "Passenger module location #{_load_passenger_location} and PassengerRoot setting #{_root_passenger_location} should be the same."
-          end
-        end
-
-        _load_passenger_prefix = @conf_files[:load][:match][2]
-        if @conf_files[:ruby]
-          unless _load_passenger_prefix == _ruby_passenger_prefix = @conf_files[:ruby][:match][2]
-            raise "Passenger module prefix #{_load_passenger_prefix} and PassengerRuby prefix #{_ruby_passenger_prefix} should be the same."
-          end
+      _load_order = @conf_files[:load][:order]
+      [ :root, :ruby, :renv ].each do |s|
+        next unless @conf_files[s]
+        if _load_order > @conf_files[s][:order]
+          raise "Passenger module loaded too late: #{@conf_files[:load][:file]},#{@conf_files[:load][:lineno]} needs to happen before #{@conf_files[s][:file]},#{@conf_files[s][:lineno]}"
         end
       end
 
-      @conf_checked = true
+      _load_passenger_location = @conf_files[:load][:match][1]
+      if @conf_files[:root]
+        unless _load_passenger_location == _root_passenger_location = @conf_files[:root][:match][2]
+          raise "Passenger module location #{_load_passenger_location} and PassengerRoot setting #{_root_passenger_location} should be the same."
+        end
+      end
+
+      _load_passenger_prefix = @conf_files[:load][:match][2]
+      if @conf_files[:ruby]
+        unless _load_passenger_prefix == _ruby_passenger_prefix = @conf_files[:ruby][:match][2]
+          raise "Passenger module prefix #{_load_passenger_prefix} and PassengerRuby prefix #{_ruby_passenger_prefix} should be the same."
+        end
+      end
+    end
+
+    def vhost
+      @vhost ||= @conf_files[:vhost][:match][1]
     end
 
     def drill_down(_c)
@@ -291,7 +422,6 @@ module Passenger
       return false
     end
 
-    private
     def from_server(s)
       @httpd_string ||= `#{@@httpd_cmd} -V`
       @httpd_string.match(/#{s}="([^"]+)"/i)[1]
