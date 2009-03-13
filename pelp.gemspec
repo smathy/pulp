@@ -13,6 +13,10 @@ Gem::Specification.new do |s|
     bin/pelp
   }
 
+  s.executables = %w{
+    pelp
+  }
+
 	#s.test_files       = Dir.glob('tests/*.rb')
 
   s.name = module_name

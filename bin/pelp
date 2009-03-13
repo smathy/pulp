@@ -1,8 +1,10 @@
 #!/usr/bin/env ruby
+require File.join( File.dirname(__FILE__), '..', 'lib', 'passenger', 'config')
 
-$LOAD_PATH.unshift(File.expand_path(File.join( File.dirname(__FILE__), '..', 'lib')))
-
-require 'passenger/config'
+if %w(--version -v).include? ARGV.first
+  puts "pelp #{Passenger::Config::VERSION}"
+  exit(0)
+end
 
 c = Passenger::Config.new( :root => ARGV[0] )
 c.update_hosts

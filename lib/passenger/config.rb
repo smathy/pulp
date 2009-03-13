@@ -5,6 +5,7 @@ require 'grep'
 
 module Passenger
   class Config
+    VERSION = '0.8.1'
     attr_reader :domain
     attr_reader :ip
     attr_reader :hosts
@@ -270,12 +271,7 @@ module Passenger
 
     def ensure_dir(d)
       _umask = File.umask(022)
-      _dir = File.join(dir, d)
-      begin
-        Dir.mkdir(_dir)
-      rescue Errno::EEXIST
-        # we don't care if it exists
-      end
+      _dir = File.mkdirs(File.join(dir, d))
       File.umask(_umask)
       _dir
     end
