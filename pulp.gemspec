@@ -1,20 +1,20 @@
 # -*- encoding: utf-8 -*-
 
-module_name = "pelp"
+module_name = "pulp"
 
 Gem::Specification.new do |s|
   s.version = "0.0.1"
   s.author = "Jason King"
-  s.summary = %q{pelp - Passenger Helper - for simple setup of Ruby Apps using Passenger}
+  s.summary = %q{pulp - Passenger Helper - for simple setup of Ruby Apps using Passenger}
 
 	s.files = %w{
     README.markdown
     lib/passenger/config.rb
-    bin/pelp
+    bin/pulp
   }
 
   s.executables = %w{
-    pelp
+    pulp
   }
 
 	#s.test_files       = Dir.glob('tests/*.rb')

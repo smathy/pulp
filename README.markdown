@@ -1,8 +1,16 @@
-Inline Attachment
-=================
+pelp
+====
 
-This package adds full support for embedding inline images into your HTML emails
-through ActionMailer.
+This is a simple helper for [passenger](http://modrails.com/) in development.  It does two things:
+
+ 1. Simplifies the setup of new passenger virtual hosts by adding the necessary
+    records to your apache config as well as to your hosts file.
+ 2. Checks your apache config to make sure that you have the right settings, and
+    right order of settings (like that your passenger vhosts are **after** your
+    `NameVirtualHost` directive).
+
+It works magically, by querying apache itself to find the location of your conf
+files.  It **isn't** magical enough to work on Windows.
 
 Installation
 ------------
@@ -10,68 +18,21 @@ Installation
 To perform a system wide installation:
 
 	gem source -a http://gems.github.com
-	gem install JasonKing-inline_attachment
-
-To use inline_attachment in your project, add the following line to your project's
-config/environment.rb:
-
-	config.gem 'inline_attachment'
-
+	gem install JasonKing-pulp
 
 Usage
 -----
 
-I've rewritten most of Edmond's great work in this version.  I now override
-path_to_image instead of `image_tag` because a big reason for all the Rails2
-breakages was because `image_tag` was basically reproduced in previous versions,
-so broke when that method changed.
+Typically you'll setup a new rails app with the `rails` executable, and then
+call `pulp` afterwards, like this:
 
-Now we override the very simple path_to_image, and most importantly we really
-just add our own stuff for ActionMailer templates, and resort to the existing
-code for everything else.
+    > rails foobar
+    > sudo pulp foobar
 
-I've also integrated in with the new implicit multipart stuff.  So now, there is
-so little code required!
-
-#### notifier.rb
-	class Notifier < ActionMailer::Base
-	  def signup
-	    recipients %q{"Testing IA" <testing@handle.it>}
-		  from       %q{"Mr Tester" <tester@handle.it>}
-		  subject "Here's a funky test"
-	  end
-	end
-	
-Oh yeah baby!  Read it and weep!  So how's this work?  Well, you'll need
-your templates named properly - see the _Multipart email_ section of the
-ActionMailer::Base docs.
-	
-#### signup.text.plain.erb
-	Your username is: <%= @username %>
-	
-#### signup.text.html.erb
-	<html><head><title>Signup Notification</title></head><body>
-	  <%= image_tag "logo.png" %>
-		<p>Your username is: <%=h @username %>
-	</body></html>
-
-
-That's it!  InlineAttachment will look for
-`#{RAILS_ROOT}/public/images/logo.png` and will do the right thing and embed it
-inline into the HTML version of the email.  ActionMailer will do the right thing
-and offer the recipient both the `text/plain` and `text/html` parts as alternatives.
-
-
-Note, that you should still be able to use this in the 0.3.0 way if you have
-code that uses that.  But there were a lot of alternatives, and the examples in
-here didn't show a crucial step of shuffling the parts around to be sure that
-the image parts came after the html.
-
-You can also do the old _manual_ method if you want.
-
+Done.  You will now be able to visit http://foobar.dev/ and see your new rails
+site running.
 
 Contributors
 ------------
  
 * Jason King (JasonKing)
-* Matt Griffin (betamatt)

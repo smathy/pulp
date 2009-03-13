@@ -2,7 +2,7 @@
 require File.join( File.dirname(__FILE__), '..', 'lib', 'passenger', 'config')
 
 if %w(--version -v).include? ARGV.first
-  puts "pelp #{Passenger::Config::VERSION}"
+  puts "#{File.basename(__FILE__)} #{Passenger::Config::VERSION}"
   exit(0)
 end
 
