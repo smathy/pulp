@@ -13,7 +13,7 @@ module Passenger
   end
 
   class Config
-    VERSION = '0.8.2'
+    VERSION = '0.8.3'
     attr_reader :domain
     attr_reader :ip
     attr_reader :hosts
@@ -260,7 +260,7 @@ module Passenger
       #
       @_conf_strings = {
         :vhost => /^\s*NameVirtualHost\s+(\S+)/i,
-        :load => %r{^\s*LoadModule\s+passenger_module\s+((/\S+)/lib/ruby/gems/\S+/passenger-([\d.]+))/ext/apache2/mod_passenger.so}i,
+        :load => %r{^\s*LoadModule\s+passenger_module\s+(((/\S+)/lib/ruby/gems/\S+/passenger-([\d.]+))/ext/apache2/mod_passenger.so)}i,
         :root => %r{^\s*PassengerRoot\s+(['"]?)(/\S+/lib/ruby/gems/\S+/passenger-([\d.]+))\1}i,
         :ruby =>  %r{^\s*PassengerRuby\s+(['"]?)(/\S+)/bin/ruby\1}i,
         :renv =>  %r{^\s*RailsEnv\s+(['"]?)(\S+)\1}i
@@ -306,12 +306,12 @@ module Passenger
     def ensure_conf
       _need_re_read = false
       unless @conf_files[:root]
-        add_to_conf( "PassengerRoot #{@conf_files[:load][:match][1]}", :load, :root )
+        add_to_conf( "PassengerRoot #{@conf_files[:load][:match][2]}", :load, :root )
         _need_re_read = true
       end
 
       unless @conf_files[:ruby]
-        add_to_conf( "PassengerRuby #{@conf_files[:load][:match][2]}/bin/ruby", :root, :ruby )
+        add_to_conf( "PassengerRuby #{@conf_files[:load][:match][3]}/bin/ruby", :root, :ruby )
         _need_re_read = true
       end
 
@@ -355,6 +355,10 @@ module Passenger
         raise "LoadModule line missing, maybe you forgot to run: passenger-install-apache2-module"
       end
 
+      unless File.exist?( _load_module_file = @conf_files[:load][:match][1])
+        raise "LoadModule file '#{_load_module_file}' missing, maybe you forgot to run: passenger-install-apache2-module"
+      end
+
       _load_order = @conf_files[:load][:order]
       [ :root, :ruby, :renv ].each do |s|
         next unless @conf_files[s]
@@ -363,7 +367,7 @@ module Passenger
         end
       end
 
-      _load_passenger_location = @conf_files[:load][:match][1]
+      _load_passenger_location = @conf_files[:load][:match][2]
       if @conf_files[:root]
         unless _load_passenger_location == _root_passenger_location = @conf_files[:root][:match][2]
           raise "Passenger module location #{_load_passenger_location} and PassengerRoot setting #{_root_passenger_location} should be the same."
@@ -379,7 +383,7 @@ module Passenger
         end
       end
 
-      _load_passenger_prefix = @conf_files[:load][:match][2]
+      _load_passenger_prefix = @conf_files[:load][:match][3]
       if @conf_files[:ruby]
         unless _load_passenger_prefix == _ruby_passenger_prefix = @conf_files[:ruby][:match][2]
           raise "Passenger module prefix #{_load_passenger_prefix} and PassengerRuby prefix #{_ruby_passenger_prefix} should be the same."
