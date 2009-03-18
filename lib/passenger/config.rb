@@ -1,11 +1,19 @@
+require 'rubygems'
 require 'fileutils'
 require 'etc'
 require 'find'
 require 'grep'
 
 module Passenger
+  class Version 
+    include Comparable
+    def initialize(_v); @v = _v.split('.').map(&:to_i); end
+    def <=>(_v); @v <=> _v.split('.').map(&:to_i); end
+    def to_s; @v.join('.'); end
+  end
+
   class Config
-    VERSION = '0.8.1'
+    VERSION = '0.8.2'
     attr_reader :domain
     attr_reader :ip
     attr_reader :hosts
@@ -14,6 +22,7 @@ module Passenger
 
     @@httpd_cmd = 'httpd'
     @@apachectl = 'apachectl'
+    @@passenger_config = 'passenger-config'
 
     @@user_re  = /^\s*User\s+(\S+)/i
     @@group_re = /^\s*Group\s+(\S+)/i
@@ -251,8 +260,8 @@ module Passenger
       #
       @_conf_strings = {
         :vhost => /^\s*NameVirtualHost\s+(\S+)/i,
-        :load => %r{^\s*LoadModule\s+passenger_module\s+((/\S+)/lib/ruby/gems/\S+/passenger-[\d.]+)/ext/apache2/mod_passenger.so}i,
-        :root => %r{^\s*PassengerRoot\s+(['"]?)(/\S+/lib/ruby/gems/\S+/passenger-[\d.]+)\1}i,
+        :load => %r{^\s*LoadModule\s+passenger_module\s+((/\S+)/lib/ruby/gems/\S+/passenger-([\d.]+))/ext/apache2/mod_passenger.so}i,
+        :root => %r{^\s*PassengerRoot\s+(['"]?)(/\S+/lib/ruby/gems/\S+/passenger-([\d.]+))\1}i,
         :ruby =>  %r{^\s*PassengerRuby\s+(['"]?)(/\S+)/bin/ruby\1}i,
         :renv =>  %r{^\s*RailsEnv\s+(['"]?)(\S+)\1}i
       }
@@ -359,6 +368,15 @@ module Passenger
         unless _load_passenger_location == _root_passenger_location = @conf_files[:root][:match][2]
           raise "Passenger module location #{_load_passenger_location} and PassengerRoot setting #{_root_passenger_location} should be the same."
         end
+
+        _configured_passenger_version = Version.new(@conf_files[:root][:match][3])
+        unless _configured_passenger_version >= passenger_config_version
+          warn "Configured passenger [#{_configured_passenger_version}] looks older than latest installed [#{passenger_config_version}]\n" +
+            "  You should edit: '#{passenger_conf}'\n"+
+            "  Or if you have sed maybe this:\n"+
+            "   sudo sed -i '' -e's~#{_root_passenger_location.sub(%r{.*/},'')}~#{_root_passenger_location.sub(%r{.*/},'').sub(/#{_configured_passenger_version}/, passenger_config_version)}~' '#{passenger_conf}'" +
+            "  ...and then rerun #{$0}."
+        end
       end
 
       _load_passenger_prefix = @conf_files[:load][:match][2]
@@ -367,6 +385,10 @@ module Passenger
           raise "Passenger module prefix #{_load_passenger_prefix} and PassengerRuby prefix #{_ruby_passenger_prefix} should be the same."
         end
       end
+    end
+
+    def passenger_config_version
+      @passenger_config_version ||= `#{@@passenger_config} --version`.chomp
     end
 
     def vhost
