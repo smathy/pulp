@@ -13,14 +13,13 @@ module Passenger
   end
 
   class Config
-    VERSION = '0.8.3'
+    VERSION = '0.8.4'
     attr_reader :domain
     attr_reader :ip
     attr_reader :hosts
 
     @@marker_string = "#----- #{File.basename($0, '.rb')} marker line -- DO NOT DELETE -----#"
 
-    @@httpd_cmd = 'httpd'
     @@apachectl = 'apachectl'
     @@passenger_config = 'passenger-config'
 
@@ -445,7 +444,7 @@ module Passenger
     end
 
     def from_server(s)
-      @httpd_string ||= `#{@@httpd_cmd} -V`
+      @httpd_string ||= `#{@@apachectl} -V`
       @httpd_string.match(/#{s}="([^"]+)"/i)[1]
     end
   end
