@@ -3,7 +3,7 @@
 module_name = "pulp"
 
 Gem::Specification.new do |s|
-  s.version = '0.8.4'
+  s.version = '0.8.5'
   s.author = "Jason King"
   s.summary = %q{pulp - Passenger Helper - for simple setup of Ruby Apps using Passenger}
 

@@ -175,7 +175,7 @@ module Passenger
     end
 
     def dir
-      @dir ||= File.dirname(self.conf)
+      @dir ||= File.dirname(conf)
     end
 
     def server_root
