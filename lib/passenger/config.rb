@@ -278,9 +278,12 @@ module Passenger
     end
 
     def ensure_dir(d)
-      _umask = File.umask(022)
-      _dir = Dir.mkdir(File.join(dir, d))
-      File.umask(_umask)
+      _dir = File.join(dir, d)
+      unless File.exists? _dir
+        _umask = File.umask(022)
+        Dir.mkdir(_dir)
+        File.umask(_umask)
+      end
       _dir
     end
 
